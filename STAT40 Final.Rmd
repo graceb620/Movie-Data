@@ -1,0 +1,155 @@
+---
+title: "STAT40 Final Project"
+output: html_document
+date: "2022-11-25"
+---
+#STAT40 Final Project - R Portion   
+Import CSV's and merge them  
+```{r}
+library(tidyverse)
+tv_rating <- read.csv(file = 'data_TV.csv')
+tv_country <- read.csv(file = "tv_countries.csv")
+glimpse(tv_rating)
+glimpse(tv_country)
+
+tv_data <- merge(tv_rating, tv_country, by = "name")
+glimpse(tv_data)
+```
+Data Cleaning
+```{r}
+#Drop Columns
+new_tv <- tv_data[c("name", "original_language", "origin_country",
+                    "vote_average", "vote_count", 
+                    "popularity", "first_air_date")]
+#Rename Columns
+new_tv <- rename(new_tv, Show_Name = name)
+
+#Remove NA
+new_tv <- drop_na(new_tv, "vote_average")
+
+#Remove Duplicates
+new_tv <- distinct(new_tv)
+
+#Removing certain variables
+glimpse(new_tv)
+```
+For the purpose of this case, we will only reccomend movies with a rating of 8.0 or higher and highly not reccomend movies with a rating below 5.0
+  
+  
+First I will do basic analysis of just the rating. I will look at the top 3 ratings and botom 3 ratings to make a basic show reccomendation  
+There were too many movies with a rating of 8.7 to make a conclusion about the best show from ratings alone.  However, there is enough evidence to not reccomend watching La Job, EastEnders, and Teletubbies.
+```{r}
+best_rating <- slice_max(new_tv, vote_average, n = 3)
+best_rating
+
+worst_rating <- slice_min(new_tv, vote_average, n = 3)
+worst_rating
+```
+
+Another way to make a recommendation could be by looking at a voter/watcher ratio. Usually, if a show is either super amazing or really bad, it will have a higher number or people who voted. 
+  
+Because of a high rating combined with a high voter/watcher ratio, we will add Codename: Kids Next Door, Dragon Ball, and The Seven Deadly Sins to the reccomended list 
+```{r}
+tv_data_new <- new_tv %>% mutate(vote_watch_ratio = 
+                        vote_count / (popularity*1000)) %>% 
+  select("Show_Name", "vote_average", "origin_country", "vote_watch_ratio") %>%
+  slice_max(vote_watch_ratio, n = 3)
+head(tv_data_new)
+```
+
+Filter out the Movies with less than 500 votes. This is to ensure a large sample size. A larger sample size indicates less bias. This data will be used in all future tests 
+```{r}
+high_vote <- filter(new_tv, vote_count > 500)
+glimpse(high_vote)
+```
+Group by country of origin and find the mean of the vote_average per country  
+  
+It appears that the country with the highest number of movies and highest average rating overall is Japan. Movies from Japan will be analyzed next. To start, we would like to figure out how many movies have the origin country of Japan
+```{r}
+by_country <- high_vote %>% group_by(origin_country) %>% 
+  summarize(count = n(), country_avg = mean(vote_average)) %>%
+  arrange(desc(country_avg))
+by_country
+
+country_movies <- function(x) {
+  count <- 0
+  for (i in seq_along(x)) {
+    if (x[[i]] == "JP") {
+      count <- count + 1
+    }
+  }
+  count  #return count
+}
+
+jp_movies(high_vote$origin_country)
+```
+Top Rated Show per Country  
+The highest rated show is The D'Amelio Show From America  
+Japan seems to come out with the highest quality shows becausee they have 28 movies that tied at a very high average of 8.7
+```{r}
+best_in_country <- high_vote %>% group_by(origin_country) %>%
+  slice_max(vote_average, n=1) %>% select("Show_Name", 
+                                          "origin_country", "vote_average") %>%
+  arrange(desc(vote_average))
+best_in_country
+```
+I am going to assign the the shows to a category based on the rating  
+Great: >= 8.5  
+Good: >= 6  
+Bad: < 6  
+```{r}
+rating_category = ifelse(new_tv$vote_average > 8.5, "Great", 
+                         ifelse(new_tv$vote_average > 6, "Good", "Bad"))
+```
+
+I'd like to use the rating info to find how many shows were in each category. I have also displayed this in a graph
+```{r}
+television = new_tv %>% mutate(vote_watch_ratio = 
+                        vote_count / (popularity*1000)) %>% 
+  mutate(category = rating_category) 
+glimpse(television)
+
+table(television$category)
+
+ggplot(television, aes(x=category, y=vote_average)) +
+  geom_bar(stat="identity", aes(fill = category))
+```
+I want to see if there is a relation between the average vote and the vote to watch ratio  
+There appears to be a very small positive correlation between the Average Vote and the Voter to Watcher Ratio. This evaluation method does not appear to give the most accurate results due to the low correlation between the variables.
+```{r}
+tv_vote <- select(television, "vote_average", "vote_watch_ratio")
+cor(tv_vote)
+
+ggplot(television, aes(x=vote_watch_ratio, y=vote_average)) +
+  geom_point(aes(color = category)) + geom_smooth(method = lm, se=FALSE) +
+  labs(title = "Average Vote vs Voter to Watcher Ratio", 
+       x = "Voter to Watcher Ratio", y = "Average Vote")
+```
+I want to see if there is a relation between popularity and the vote count. There appears to be a small positive correlation between the Number of Views and the Number of Views. This also does not seem like a reliable way to get accurate results due to the low correlation. 
+```{r}
+tv_count <- select(television, "popularity", "vote_count")
+cor(tv_count)
+
+ggplot(television, aes(x= vote_count, y=popularity)) +
+  geom_point(aes(color = category)) + geom_smooth(method = lm, se=FALSE) +
+  labs(title = "Number of Votes vs Number of Views", 
+       x = "Number of Votes", y = "Number of Views")
+```
+```{r}
+best_television <- subset(television, category == "Great")
+
+ggplot(best_television, aes(origin_country)) +
+  geom_bar(aes(fill = origin_country)) + labs(title = "TV Shows per country with a category of Great",
+                    x = "Origin Country",
+                    y = "Count of Great TV Shows")
+```
+
+
+
+ 
+
+
+
+
+
+
